@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="声刻 WaveCraft：在浏览器中分析 RMS 波形、标记低电平区段、试听、删除并导出音频片段。"
+    />
+    <title>声刻 WaveCraft · 音频编辑</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d151d'/%3E%3Cpath d='M7 16h3m3-7v14m4-10v6m4-9v12m4-7h3' fill='none' stroke='%2357e3bd' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#mainContent">跳到主要内容</a>
+
+    <svg class="svg-sprite" aria-hidden="true">
+      <symbol id="icon-wave" viewBox="0 0 24 24">
+        <path d="M3 12h2m3-6v12m4-9v6m4-8v10m4-6v2" />
+      </symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24">
+        <path d="M12 16V4m0 0L7 9m5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+      </symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24">
+        <path d="m8 5 11 7-11 7V5Z" />
+      </symbol>
+      <symbol id="icon-pause" viewBox="0 0 24 24">
+        <path d="M8 5v14M16 5v14" />
+      </symbol>
+      <symbol id="icon-start" viewBox="0 0 24 24">
+        <path d="M6 5v14M19 6l-9 6 9 6V6Z" />
+      </symbol>
+      <symbol id="icon-tag" viewBox="0 0 24 24">
+        <path d="M20 13 13 20a2 2 0 0 1-2.8 0L4 13.8V5a1 1 0 0 1 1-1h8.8L20 10.2a2 2 0 0 1 0 2.8Z" />
+        <circle cx="9" cy="9" r="1.5" />
+      </symbol>
+      <symbol id="icon-export" viewBox="0 0 24 24">
+        <path d="M12 3v12m0 0 5-5m-5 5-5-5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+      </symbol>
+      <symbol id="icon-undo" viewBox="0 0 24 24">
+        <path d="M9 7 4 12l5 5M4 12h9a6 6 0 0 1 6 6" />
+      </symbol>
+      <symbol id="icon-minus" viewBox="0 0 24 24">
+        <path d="M5 12h14" />
+      </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="icon-fit" viewBox="0 0 24 24">
+        <path d="M8 4H4v4m12-4h4v4M8 20H4v-4m12 4h4v-4M8 12h8" />
+      </symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24">
+        <path d="m6 6 12 12M18 6 6 18" />
+      </symbol>
+      <symbol id="icon-play-range" viewBox="0 0 24 24">
+        <path d="M5 5v14M9 8l10 4-10 4V8Z" />
+      </symbol>
+      <symbol id="icon-file" viewBox="0 0 24 24">
+        <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5Z" />
+        <path d="M14 3v5h5M8 13h8M8 17h6" />
+      </symbol>
+      <symbol id="icon-more" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1" />
+        <circle cx="12" cy="12" r="1" />
+        <circle cx="19" cy="12" r="1" />
+      </symbol>
+      <symbol id="icon-eye" viewBox="0 0 24 24">
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z" />
+        <circle cx="12" cy="12" r="2.5" />
+      </symbol>
+      <symbol id="icon-speech" viewBox="0 0 24 24">
+        <path d="M4 5h16v11H9l-5 4V5Z" />
+        <path d="M8 9h8M8 12h5" />
+      </symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24">
+        <path d="m9 6 6 6-6 6" />
+      </symbol>
+    </svg>
+
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="声刻 WaveCraft 首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg><use href="#icon-wave"></use></svg>
+        </span>
+        <span class="brand-copy">
+          <strong>声刻</strong>
+          <span>WAVECRAFT</span>
+        </span>
+      </a>
+
+      <div class="file-identity" id="fileIdentity" aria-live="polite">
+        <span class="file-dot" aria-hidden="true"></span>
+        <span id="headerFileName">等待载入音频</span>
+        <span class="file-meta" id="headerFileMeta">WAV · MP3 · FLAC · M4A</span>
+      </div>
+
+      <div class="header-actions">
+        <button class="button button-quiet undo-button" id="undoBtn" type="button" hidden>
+          <svg aria-hidden="true"><use href="#icon-undo"></use></svg>
+          <span>撤销删除</span>
+        </button>
+        <label class="export-format" for="exportFormat">
+          <span>格式</span>
+          <select id="exportFormat" disabled aria-label="导出格式">
+            <option value="wav">WAV</option>
+            <option value="mp3">MP3</option>
+            <option value="flac">FLAC</option>
+            <option value="m4a">M4A</option>
+            <option value="ogg">OGG</option>
+          </select>
+        </label>
+        <button
+          class="button button-primary"
+          id="exportBtn"
+          type="button"
+          disabled
+          title="导出当前选区；没有选区时导出完整音频"
+        >
+          <svg aria-hidden="true"><use href="#icon-export"></use></svg>
+          <span id="exportBtnLabel">导出音频</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="main-shell" id="mainContent">
+      <section class="upload-stage" id="uploadStage" aria-labelledby="uploadTitle">
+        <div class="upload-orbit upload-orbit-one" aria-hidden="true"></div>
+        <div class="upload-orbit upload-orbit-two" aria-hidden="true"></div>
+        <div class="upload-copy">
+          <span class="eyebrow">
+            <span class="live-dot"></span>
+            浏览器音频工作台
+          </span>
+          <h1 id="uploadTitle">听见声音的<br /><em>每一段呼吸</em></h1>
+          <p>
+            分析 RMS 波形，自动发现低电平区段。拖动选区即可试听、导出或从音频中删除。
+          </p>
+          <div class="format-list" aria-label="支持的音频格式">
+            <span>WAV</span><span>MP3</span><span>FLAC</span><span>OGG</span
+            ><span>M4A</span>
+          </div>
+        </div>
+
+        <div class="upload-action-column">
+          <button
+            class="drop-zone"
+            id="dropZone"
+            type="button"
+            aria-describedby="uploadHelp uploadError"
+          >
+            <span class="drop-icon">
+              <svg aria-hidden="true"><use href="#icon-upload"></use></svg>
+            </span>
+            <span class="drop-title">拖入音频，或点击选择</span>
+            <span class="drop-subtitle">最大 250 MB · 自动转换为无损 PCM</span>
+          </button>
+          <input
+            id="fileInput"
+            class="visually-hidden"
+            type="file"
+            accept=".wav,.mp3,.flac,.ogg,.oga,.opus,.m4a,.aac,.webm,.aif,.aiff,.wma,audio/*"
+          />
+          <p class="upload-help" id="uploadHelp">
+            首次分析需要解码音频，较长文件可能需要几秒钟。
+          </p>
+          <p class="form-error" id="uploadError" role="alert" hidden></p>
+        </div>
+
+        <div class="upload-features" aria-label="主要功能">
+          <article>
+            <span>01</span>
+            <div>
+              <strong>精细 RMS 波形</strong>
+              <p>50–200 ms 分析精度，横向滚动查看整段音频。</p>
+            </div>
+          </article>
+          <article>
+            <span>02</span>
+            <div>
+              <strong>静音自动定位</strong>
+              <p>低于阈值的区段自动标记，阈值可即时调整。</p>
+            </div>
+          </article>
+          <article>
+            <span>03</span>
+            <div>
+              <strong>选区直接交付</strong>
+              <p>试听、导出 WAV，或删除不需要的片段。</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="editor" id="editor" aria-labelledby="editorTitle" hidden>
+        <div class="editor-heading">
+          <div>
+            <span class="eyebrow">
+              <span class="live-dot"></span>
+              当前工作区
+            </span>
+            <h1 id="editorTitle">音频概览</h1>
+          </div>
+          <div class="file-facts" aria-label="音频信息">
+            <span><b id="factDuration">00:00.000</b> 时长</span>
+            <span><b id="factRate">—</b> 采样率</span>
+            <span><b id="factChannels">—</b> 声道</span>
+          </div>
+        </div>
+
+        <div class="workspace">
+          <section class="timeline-card" aria-labelledby="timelineHeading">
+            <div class="timeline-toolbar">
+              <div class="transport" aria-label="播放控制">
+                <button
+                  class="icon-button"
+                  id="toStartBtn"
+                  type="button"
+                  aria-label="跳到开头"
+                  title="跳到开头"
+                >
+                  <svg aria-hidden="true"><use href="#icon-start"></use></svg>
+                </button>
+                <button
+                  class="play-button"
+                  id="playBtn"
+                  type="button"
+                  aria-label="播放"
+                  title="播放 / 暂停（Space）"
+                >
+                  <svg aria-hidden="true" id="playIcon"><use href="#icon-play"></use></svg>
+                </button>
+                <div class="time-readout">
+                  <span id="currentTime">00:00.000</span>
+                  <span class="time-divider">/</span>
+                  <span id="totalTime">00:00.000</span>
+                </div>
+              </div>
+
+              <div class="timeline-tools">
+                <div class="field-inline">
+                  <label for="resolutionSelect">分析精度</label>
+                  <select id="resolutionSelect">
+                    <option value="50">50 ms</option>
+                    <option value="100" selected>100 ms</option>
+                    <option value="200">200 ms</option>
+                  </select>
+                </div>
+                <div class="zoom-control" aria-label="波形缩放">
+                  <button
+                    class="icon-button compact"
+                    id="zoomOutBtn"
+                    type="button"
+                    aria-label="缩小时间线"
+                    title="缩小"
+                  >
+                    <svg aria-hidden="true"><use href="#icon-minus"></use></svg>
+                  </button>
+                  <span id="zoomValue" aria-live="polite">100%</span>
+                  <button
+                    class="icon-button compact"
+                    id="zoomInBtn"
+                    type="button"
+                    aria-label="放大时间线"
+                    title="放大"
+                  >
+                    <svg aria-hidden="true"><use href="#icon-plus"></use></svg>
+                  </button>
+                  <button
+                    class="icon-button compact"
+                    id="fitBtn"
+                    type="button"
+                    aria-label="适应窗口"
+                    title="适应窗口"
+                  >
+                    <svg aria-hidden="true"><use href="#icon-fit"></use></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="timeline-scroller"
+              id="timelineScroller"
+              tabindex="-1"
+              aria-label="可横向滚动的 RMS 时间线"
+            >
+              <div class="timeline-track" id="timelineTrack">
+                <canvas
+                  id="waveCanvas"
+                  tabindex="0"
+                  role="application"
+                  aria-label="RMS 波形。拖动选择片段，双击添加标签。方向键移动播放头，Shift 加方向键调整选区。"
+                  aria-describedby="timelineHelp"
+                ></canvas>
+              </div>
+            </div>
+
+            <div class="timeline-footer">
+              <p id="timelineHelp">
+                拖动波形选择片段 · 双击添加标签 · Shift + 滚轮横向滚动
+              </p>
+              <div class="legend" aria-label="图例">
+                <span><i class="legend-wave"></i>正常电平</span>
+                <span><i class="legend-low"></i>低电平</span>
+                <span><i class="legend-selection"></i>选区</span>
+              </div>
+            </div>
+          </section>
+
+          <aside class="inspector" aria-label="音频检查器">
+            <section class="inspector-section">
+              <div class="section-heading">
+                <div>
+                  <span class="section-kicker">LOW LEVEL DETECTION</span>
+                  <h2>低电平区段</h2>
+                </div>
+                <label class="switch">
+                  <input id="autoLabelToggle" type="checkbox" checked />
+                  <span aria-hidden="true"></span>
+                  <span class="switch-label">自动</span>
+                </label>
+              </div>
+              <div class="threshold-row">
+                <label for="thresholdSlider">阈值</label>
+                <output id="thresholdValue" for="thresholdSlider">-43 dBFS</output>
+              </div>
+              <input
+                id="thresholdSlider"
+                class="range-input"
+                type="range"
+                min="-60"
+                max="-20"
+                step="1"
+                value="-43"
+              />
+              <div class="range-labels" aria-hidden="true">
+                <span>-60</span><span>-40</span><span>-20</span>
+              </div>
+              <p class="section-note">
+                连续低于阈值的 RMS 区段会被标记。调整阈值后可立即查看结果。
+              </p>
+            </section>
+
+            <section class="inspector-section selection-section">
+              <div class="section-heading">
+                <div>
+                  <span class="section-kicker">ACTIVE RANGE</span>
+                  <h2>当前选区</h2>
+                </div>
+                <button
+                  class="text-button"
+                  id="clearSelectionBtn"
+                  type="button"
+                  disabled
+                >
+                  清除
+                </button>
+              </div>
+
+              <div class="selection-empty" id="selectionEmpty">
+                <span class="selection-icon" aria-hidden="true">
+                  <svg><use href="#icon-more"></use></svg>
+                </span>
+                <p>在波形上横向拖动，选择要处理的声音片段。</p>
+              </div>
+
+              <div class="selection-details" id="selectionDetails" hidden>
+                <div class="selection-time-grid">
+                  <span>起点 <b id="selectionStart">00:00.000</b></span>
+                  <span>终点 <b id="selectionEnd">00:00.000</b></span>
+                </div>
+                <div class="selection-duration">
+                  已选择 <strong id="selectionDuration">0.000 秒</strong>
+                </div>
+                <p class="selection-accuracy">
+                  试听使用服务端精确切片；导出时首尾自动加入 5 ms 淡入淡出，避免爆音。
+                </p>
+                <button class="button button-wide button-secondary" id="playSelectionBtn" type="button">
+                  <svg aria-hidden="true"><use href="#icon-play-range"></use></svg>
+                  播放选区
+                </button>
+                <button class="button button-wide button-danger-quiet" id="deleteSelectionBtn" type="button">
+                  <svg aria-hidden="true"><use href="#icon-trash"></use></svg>
+                  从音频中删除
+                </button>
+              </div>
+            </section>
+
+            <section class="inspector-section asr-section">
+              <div class="section-heading">
+                <div>
+                  <span class="section-kicker">SPEECH TO TEXT</span>
+                  <h2>语音识别</h2>
+                </div>
+                <span class="optional-badge">可选</span>
+              </div>
+
+              <details class="asr-config" id="asrConfig">
+                <summary>
+                  <span>
+                    <svg aria-hidden="true"><use href="#icon-speech"></use></svg>
+                    配置 OpenAI 兼容接口
+                  </span>
+                  <svg class="summary-chevron" aria-hidden="true">
+                    <use href="#icon-chevron"></use>
+                  </svg>
+                </summary>
+                <div class="asr-form">
+                  <label class="field" for="asrBaseUrl">
+                    <span>Base URL 或完整转写地址</span>
+                    <input
+                      id="asrBaseUrl"
+                      type="url"
+                      inputmode="url"
+                      placeholder="https://api.openai.com/v1"
+                      autocomplete="url"
+                    />
+                  </label>
+                  <label class="field" for="asrApiKey">
+                    <span>API Key <small>可留空供本地服务使用</small></span>
+                    <span class="password-field">
+                      <input
+                        id="asrApiKey"
+                        type="password"
+                        placeholder="sk-…"
+                        autocomplete="off"
+                        spellcheck="false"
+                      />
+                      <button
+                        class="password-toggle"
+                        id="asrKeyToggle"
+                        type="button"
+                        aria-label="显示 API Key"
+                        aria-pressed="false"
+                      >
+                        <svg aria-hidden="true"><use href="#icon-eye"></use></svg>
+                      </button>
+                    </span>
+                  </label>
+                  <div class="asr-field-grid">
+                    <label class="field" for="asrModel">
+                      <span>模型</span>
+                      <input
+                        id="asrModel"
+                        type="text"
+                        value="whisper-1"
+                        autocomplete="off"
+                        spellcheck="false"
+                      />
+                    </label>
+                    <label class="field" for="asrLanguage">
+                      <span>语言</span>
+                      <select id="asrLanguage">
+                        <option value="">自动检测</option>
+                        <option value="zh">中文</option>
+                        <option value="en">English</option>
+                        <option value="ja">日本語</option>
+                        <option value="ko">한국어</option>
+                        <option value="es">Español</option>
+                        <option value="fr">Français</option>
+                        <option value="de">Deutsch</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="asr-field-grid">
+                    <label class="field" for="asrMode">
+                      <span>处理方式</span>
+                      <select id="asrMode">
+                        <option value="segments" selected>自动分段</option>
+                        <option value="whole">整段识别</option>
+                      </select>
+                    </label>
+                    <label class="field" id="chunkSecondsField" for="asrChunkSeconds">
+                      <span>每段时长</span>
+                      <select id="asrChunkSeconds">
+                        <option value="15">15 秒</option>
+                        <option value="30" selected>30 秒</option>
+                        <option value="45">45 秒</option>
+                        <option value="60">60 秒</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p class="privacy-note">
+                    API Key 仅随本次请求发送到本站后端并转发给所填服务，不写入磁盘。
+                  </p>
+                  <button class="button button-wide button-secondary" id="asrStartBtn" type="button">
+                    <svg aria-hidden="true"><use href="#icon-speech"></use></svg>
+                    <span id="asrStartLabel">开始识别</span>
+                  </button>
+                  <p class="asr-status" id="asrStatus" role="status"></p>
+                </div>
+              </details>
+            </section>
+
+            <section class="inspector-section labels-section">
+              <div class="section-heading">
+                <div>
+                  <span class="section-kicker">TIMELINE NOTES</span>
+                  <h2>时间标签 <span class="count-badge" id="labelCount">0</span></h2>
+                </div>
+                <button
+                  class="icon-button compact add-label-button"
+                  id="addLabelBtn"
+                  type="button"
+                  aria-label="在播放头位置添加标签"
+                  title="在播放头位置添加标签（L）"
+                >
+                  <svg aria-hidden="true"><use href="#icon-plus"></use></svg>
+                </button>
+              </div>
+              <p class="section-note compact-note">点击标签跳转；自动标签也可单独删除。</p>
+              <div class="label-list" id="labelList" aria-live="polite"></div>
+            </section>
+
+            <section class="inspector-section transcript-section" id="transcriptSection" hidden>
+              <div class="section-heading">
+                <div>
+                  <span class="section-kicker">TRANSCRIPT</span>
+                  <h2>识别文本 <span class="count-badge" id="transcriptCount">0</span></h2>
+                </div>
+                <button
+                  class="icon-button compact"
+                  id="clearTranscriptBtn"
+                  type="button"
+                  aria-label="清除识别文本"
+                  title="清除识别文本"
+                >
+                  <svg aria-hidden="true"><use href="#icon-trash"></use></svg>
+                </button>
+              </div>
+              <p class="section-note compact-note">点击文本块可跳转到对应时间段。</p>
+              <div class="transcript-list" id="transcriptList" aria-live="polite"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <audio id="audioPlayer" preload="metadata"></audio>
+    <audio id="selectionPlayer" preload="auto"></audio>
+
+    <dialog class="confirm-dialog" id="deleteDialog" aria-labelledby="deleteTitle">
+      <form method="dialog">
+        <div class="dialog-icon" aria-hidden="true">
+          <svg><use href="#icon-trash"></use></svg>
+        </div>
+        <h2 id="deleteTitle">删除所选片段？</h2>
+        <p>
+          将从当前音频中移除
+          <strong id="deleteRangeLabel">00:00.000 – 00:00.000</strong>。
+          删除后可撤销最近一次操作。
+        </p>
+        <div class="dialog-actions">
+          <button class="button button-quiet" value="cancel" type="submit">取消</button>
+          <button
+            class="button button-danger"
+            id="confirmDeleteBtn"
+            value="confirm"
+            type="button"
+          >
+            确认删除
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+    <div class="busy-overlay" id="busyOverlay" hidden>
+      <div class="busy-card" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <div>
+          <strong id="busyTitle">正在分析音频</strong>
+          <p id="busyMessage">解码并计算 RMS 波形，请稍候。</p>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
