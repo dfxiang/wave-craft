@@ -251,6 +251,43 @@ svg {
   gap: 10px;
 }
 
+.language-picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.language-picker svg {
+  position: absolute;
+  z-index: 1;
+  left: 10px;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  pointer-events: none;
+}
+
+.language-picker select {
+  width: 106px;
+  min-height: 44px;
+  padding: 8px 24px 8px 32px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.language-picker select:not(:disabled):hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
 .button {
   display: inline-flex;
   min-height: 44px;
@@ -467,6 +504,12 @@ svg {
   color: var(--accent);
   font-style: normal;
   font-weight: 520;
+}
+
+html[lang="fr"] .upload-copy h1,
+html[lang="de"] .upload-copy h1 {
+  font-size: clamp(38px, 5vw, 74px);
+  letter-spacing: -0.04em;
 }
 
 .upload-copy > p {
@@ -1807,10 +1850,17 @@ svg {
 
 @media (max-width: 760px) {
   .app-header {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand file"
+      "actions actions";
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 12px;
     min-height: 66px;
     padding: 9px 14px;
+  }
+
+  .brand {
+    grid-area: brand;
   }
 
   .brand-copy span {
@@ -1818,6 +1868,7 @@ svg {
   }
 
   .file-identity {
+    grid-area: file;
     justify-content: flex-start;
   }
 
@@ -1827,7 +1878,15 @@ svg {
   }
 
   .header-actions {
+    grid-area: actions;
+    width: 100%;
     gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid rgb(95 128 146 / 18%);
+  }
+
+  .language-picker {
+    margin-right: auto;
   }
 
   .undo-button span,
@@ -1860,6 +1919,11 @@ svg {
 
   .upload-copy h1 {
     font-size: clamp(40px, 13vw, 60px);
+  }
+
+  html[lang="fr"] .upload-copy h1,
+  html[lang="de"] .upload-copy h1 {
+    font-size: clamp(36px, 10vw, 52px);
   }
 
   .drop-zone {
@@ -1950,11 +2014,16 @@ svg {
   }
 
   .header-actions {
-    margin-left: auto;
+    margin-left: 0;
   }
 
   .upload-copy h1 {
     font-size: 39px;
+  }
+
+  html[lang="fr"] .upload-copy h1,
+  html[lang="de"] .upload-copy h1 {
+    font-size: clamp(33px, 10vw, 42px);
   }
 
   .upload-copy > p {

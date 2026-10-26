@@ -27,6 +27,8 @@ transcription.
 
 ## Features
 
+- Interface available in Simplified Chinese, English, French, and German, with automatic
+  browser-language detection and persistent manual selection.
 - RMS waveform analysis at 50 ms, 100 ms, and 200 ms resolution.
 - Horizontally scrollable long-audio timelines. Only the visible canvas area is rendered to
   avoid extremely wide canvases.

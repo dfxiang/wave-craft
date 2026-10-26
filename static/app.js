@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  const i18n = window.WaveCraftI18n;
+  const t = (key, values) => i18n.t(key, values);
   const $ = (id) => document.getElementById(id);
   const dom = {
     uploadStage: $("uploadStage"),
@@ -70,6 +72,7 @@
     busyOverlay: $("busyOverlay"),
     busyTitle: $("busyTitle"),
     busyMessage: $("busyMessage"),
+    languageSelect: $("languageSelect"),
   };
 
   const canvas = dom.waveCanvas;
@@ -166,16 +169,31 @@
   }
 
   function formatRulerTime(seconds, step) {
-    if (step < 1) return `${Math.round(seconds * 1000)} ms`;
-    if (seconds < 60) return `${seconds.toFixed(seconds % 1 ? 1 : 0)} s`;
+    if (step < 1) return `${i18n.formatNumber(Math.round(seconds * 1000))} ms`;
+    if (seconds < 60) {
+      return `${i18n.formatNumber(seconds, {
+        minimumFractionDigits: seconds % 1 ? 1 : 0,
+        maximumFractionDigits: 1,
+      })} s`;
+    }
     const minutes = Math.floor(seconds / 60);
     const secs = Math.round(seconds % 60);
     return `${minutes}:${String(secs).padStart(2, "0")}`;
   }
 
   function formatSeconds(seconds) {
-    if (seconds < 1) return `${Math.round(seconds * 1000)} 毫秒`;
-    return `${seconds.toFixed(seconds < 10 ? 2 : 1)} 秒`;
+    if (seconds < 1) {
+      return t("units.milliseconds", {
+        value: i18n.formatNumber(Math.round(seconds * 1000)),
+      });
+    }
+    const digits = seconds < 10 ? 2 : 1;
+    return t("units.seconds", {
+      value: i18n.formatNumber(seconds, {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      }),
+    });
   }
 
   function setIcon(element, iconId) {
@@ -227,7 +245,10 @@
     dom.asrStartBtn.disabled = !hasData || state.busy || state.asrBusy;
     dom.playBtn.disabled = !hasData || state.busy;
     dom.toStartBtn.disabled = !hasData || state.busy;
-    dom.exportBtnLabel.textContent = hasSelection ? "导出选区" : "导出音频";
+    dom.languageSelect.disabled = state.busy || state.uploadBusy || state.asrBusy;
+    dom.exportBtnLabel.textContent = t(
+      hasSelection ? "header.exportSelection" : "header.exportAudio",
+    );
     dom.undoBtn.hidden = !state.data?.previous_available;
     dom.undoBtn.disabled = state.busy;
   }
@@ -238,13 +259,23 @@
       if (Array.isArray(payload.detail)) {
         return payload.detail
           .map((item) => item.msg || String(item))
-          .join("；");
+          .join(t("errors.detailSeparator"));
       }
-      return payload.detail || payload.message || `请求失败 (${response.status})`;
+      return (
+        payload.detail ||
+        payload.message ||
+        t("errors.requestFailed", { status: response.status })
+      );
     } catch {
       const text = await response.text().catch(() => "");
-      return text || `请求失败 (${response.status})`;
+      return text || t("errors.requestFailed", { status: response.status });
     }
+  }
+
+  function apiFetch(input, init = {}) {
+    const headers = new Headers(init.headers || {});
+    headers.set("Accept-Language", i18n.getLanguage());
+    return fetch(input, { ...init, headers });
   }
 
   function restoreAsrSettings() {
@@ -307,12 +338,15 @@
     dom.factDuration.textContent = formatTime(data.duration);
     dom.factRate.textContent = `${(data.sample_rate / 1000).toFixed(1)} kHz`;
     dom.factChannels.textContent =
-      data.channels === 1 ? "单声道" : `${data.channels} 声道`;
+      data.channels === 1
+        ? t("channels.mono")
+        : t("channels.multiple", { count: data.channels });
     dom.headerFileName.textContent = data.name;
-    dom.headerFileMeta.textContent = `${(data.source_format || "").toUpperCase()} · ${
-      FORMAT_NAMES[data.default_export_format] || "WAV"
-    } 默认导出`;
-    document.title = `${data.name} · 声刻 WaveCraft`;
+    dom.headerFileMeta.textContent = `${(data.source_format || "").toUpperCase()} · ${t(
+      "header.defaultExport",
+      { format: FORMAT_NAMES[data.default_export_format] || "WAV" },
+    )}`;
+    document.title = `${data.name} · WaveCraft`;
     populateExportFormats(data);
 
     if (options.reloadMedia) {
@@ -352,18 +386,18 @@
     dom.uploadError.hidden = true;
     dom.uploadError.textContent = "";
     if (file.size > 250 * 1024 * 1024) {
-      dom.uploadError.textContent = "文件超过 250 MB 限制，请先压缩或裁剪音频。";
+      dom.uploadError.textContent = t("upload.tooLarge");
       dom.uploadError.hidden = false;
       dom.dropZone.focus();
       return;
     }
 
     state.uploadBusy = true;
-    showBusy("正在载入音频", "解码音频并计算 RMS 波形，请稍候。");
+    showBusy(t("upload.busyTitle"), t("upload.busyMessage"));
     const form = new FormData();
     form.append("file", file);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/audio?resolution_ms=${encodeURIComponent(state.resolutionMs)}`,
         { method: "POST", body: form },
       );
@@ -390,10 +424,10 @@
         requestDraw();
         canvas.focus({ preventScroll: true });
       }, 50);
-      toast("音频已载入，拖动波形即可选择片段。", "success");
+      toast(t("upload.success"), "success");
     } catch (error) {
       dom.uploadError.textContent =
-        error instanceof Error ? error.message : "音频处理失败，请重试。";
+        error instanceof Error ? error.message : t("upload.failure");
       dom.uploadError.hidden = false;
       dom.dropZone.focus();
     } finally {
@@ -703,7 +737,7 @@
       ctx.fillStyle = COLORS.muted;
       ctx.font = '9px "SFMono-Regular", "Cascadia Code", monospace';
       ctx.textAlign = "left";
-      ctx.fillText("TRANSCRIPT", 8, transcriptTop + 8);
+      ctx.fillText(t("timeline.transcriptShort"), 8, transcriptTop + 8);
 
       state.transcripts.forEach((transcript, index) => {
         const x1 =
@@ -742,7 +776,7 @@
         ctx.fillText(formatTime(transcript.start), left + 9, transcriptTop + 15);
         ctx.fillStyle = transcript.text ? COLORS.text : COLORS.faint;
         ctx.font = '11px Inter, "PingFang SC", "Microsoft YaHei", sans-serif';
-        const preview = transcript.text || "未识别到语音";
+        const preview = transcript.text || t("transcript.unknown");
         ctx.fillText(preview, left + 9, transcriptTop + 35);
         ctx.restore();
       });
@@ -756,7 +790,7 @@
       const x = PLOT_LEFT + label.start * m.pixelsPerSecond - m.scrollLeft;
       if (x < PLOT_LEFT - 150 || x > width + 8) continue;
       ctx.font = '9px Inter, "PingFang SC", "Microsoft YaHei", sans-serif';
-      const text = label.type === "auto" ? "低电平" : label.title;
+      const text = labelTitle(label);
       const textWidth = Math.min(132, ctx.measureText(text).width);
       const pillWidth = textWidth + 18;
       let lane = laneEnds.findIndex((end) => x > end + 5);
@@ -826,9 +860,13 @@
         const db = dbAtTime(state.hover.time);
         const peakDb = peakAtTime(state.hover.time);
         drawSimpleTooltip(
-          `${formatTime(state.hover.time)}  ·  RMS ${db.toFixed(
-            1,
-          )}  ·  Peak ${peakDb.toFixed(1)} dBFS`,
+          `${formatTime(state.hover.time)}  ·  RMS ${i18n.formatNumber(db, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}  ·  ${t("timeline.peak")} ${i18n.formatNumber(peakDb, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })} dBFS`,
           hoverX,
           clamp(state.hover.y - 48, rulerHeight + 8, waveBottom - 42),
           width,
@@ -871,7 +909,11 @@
     if (!transcript) return;
     const maxWidth = Math.min(310, width - PLOT_LEFT - 22);
     ctx.font = '11px Inter, "PingFang SC", "Microsoft YaHei", sans-serif';
-    const lines = wrapCanvasText(transcript.text || "未识别到语音", maxWidth - 20, 4);
+    const lines = wrapCanvasText(
+      transcript.text || t("transcript.unknown"),
+      maxWidth - 20,
+      4,
+    );
     const header = `${formatTime(transcript.start)} – ${formatTime(transcript.end)}`;
     const boxHeight = 25 + lines.length * 17;
     const left = clamp(x + 10, PLOT_LEFT + 4, width - maxWidth - 8);
@@ -959,6 +1001,12 @@
     return `auto:${label.start.toFixed(3)}:${label.end.toFixed(3)}`;
   }
 
+  function labelTitle(label) {
+    return label.type === "auto"
+      ? t("labels.lowLevel")
+      : t("labels.manual", { number: label.serial || 1 });
+  }
+
   function recomputeAutoLabels() {
     state.autoLabels = [];
     if (!state.data || !dom.autoLabelToggle.checked) return;
@@ -975,7 +1023,6 @@
         const label = {
           id: `auto-${start.toFixed(3)}-${end.toFixed(3)}`,
           type: "auto",
-          title: "低电平",
           start,
           end,
           db: count ? sum / count : -100,
@@ -1013,14 +1060,15 @@
     dom.labelCount.textContent = String(labels.length);
     if (!labels.length) {
       dom.labelList.innerHTML = state.autoLabelToggle.checked
-        ? '<p class="empty-list">当前阈值下没有检测到低电平区段，可继续调高阈值。</p>'
-        : '<p class="empty-list">自动标签已关闭。可在播放头位置添加手动标签。</p>';
+        ? `<p class="empty-list">${escapeHtml(t("labels.emptyThreshold"))}</p>`
+        : `<p class="empty-list">${escapeHtml(t("labels.emptyDisabled"))}</p>`;
       requestDraw();
       return;
     }
 
     dom.labelList.innerHTML = labels
       .map((label) => {
+        const title = labelTitle(label);
         const timeLabel =
           label.type === "auto"
             ? `${formatTime(label.start)} – ${formatTime(label.end)}`
@@ -1030,13 +1078,15 @@
             <button class="label-jump" type="button" data-label-jump="${escapeHtml(label.id)}">
               <span class="label-title-line">
                 <i class="type-dot ${label.type}"></i>
-                <strong>${escapeHtml(label.title)}</strong>
+                <strong>${escapeHtml(title)}</strong>
               </span>
               <span class="label-time">${timeLabel}</span>
             </button>
             <button class="delete-item" type="button" data-label-delete="${escapeHtml(
               label.id,
-            )}" aria-label="删除标签 ${escapeHtml(label.title)}" title="删除标签">
+            )}" aria-label="${escapeHtml(
+              t("labels.deleteAria", { title }),
+            )}" title="${escapeHtml(t("labels.deleteTitle"))}">
               <svg aria-hidden="true"><use href="#icon-trash"></use></svg>
             </button>
           </article>`;
@@ -1053,19 +1103,19 @@
         (label) => Math.abs(label.start - at) < state.resolutionMs / 1000 / 2,
       )
     ) {
-      toast("这个位置已经有手动标签。");
+      toast(t("labels.alreadyExists"));
       return;
     }
     state.manualLabels.push({
       id: `manual-${Date.now()}-${state.labelSerial}`,
       type: "manual",
-      title: `手动标记 ${state.labelSerial}`,
+      serial: state.labelSerial,
       start: at,
       end: at,
     });
     state.labelSerial += 1;
     renderLabels();
-    toast(`已在 ${formatTime(at)} 添加标签。`, "success");
+    toast(t("labels.added", { time: formatTime(at) }), "success");
   }
 
   function deleteLabel(labelId) {
@@ -1077,7 +1127,7 @@
       state.manualLabels = state.manualLabels.filter((label) => label.id !== labelId);
     }
     renderLabels();
-    toast("标签已删除。");
+    toast(t("labels.deleted"));
   }
 
   function renderTranscripts() {
@@ -1091,7 +1141,7 @@
     }
     dom.transcriptList.innerHTML = transcripts
       .map((transcript) => {
-        const text = transcript.text || "未识别到语音";
+        const text = transcript.text || t("transcript.unknown");
         return `
           <article class="transcript-item" data-transcript-id="${escapeHtml(
             transcript.id,
@@ -1108,7 +1158,9 @@
             </button>
             <button class="delete-item" type="button" data-transcript-delete="${escapeHtml(
               transcript.id,
-            )}" aria-label="删除该段识别文本" title="删除该段识别文本">
+            )}" aria-label="${escapeHtml(
+              t("transcript.deleteAria"),
+            )}" title="${escapeHtml(t("transcript.deleteAria"))}">
               <svg aria-hidden="true"><use href="#icon-trash"></use></svg>
             </button>
           </article>`;
@@ -1251,7 +1303,9 @@
       startPlaybackFrame();
     } catch (error) {
       toast(
-        error instanceof Error ? `无法播放音频：${error.message}` : "无法播放音频。",
+        error instanceof Error
+          ? t("playback.error", { message: error.message })
+          : t("playback.errorFallback"),
         "error",
       );
     }
@@ -1285,7 +1339,7 @@
         };
         const onError = () => {
           cleanup();
-          reject(new Error("选区音频加载失败"));
+          reject(new Error(t("selection.loadFailed")));
         };
         const cleanup = () => {
           dom.selectionPlayer.removeEventListener("loadedmetadata", onReady);
@@ -1302,7 +1356,7 @@
         state.selection.start !== target.start ||
         state.selection.end !== target.end
       ) {
-        throw new Error("选区已发生变化，请重新播放");
+        throw new Error(t("selection.changed"));
       }
       await dom.selectionPlayer.play();
       state.playbackMode = "selection";
@@ -1311,7 +1365,9 @@
       state.playbackMode = "full";
       state.playbackSelection = null;
       toast(
-        error instanceof Error ? `无法播放选区：${error.message}` : "无法播放选区。",
+        error instanceof Error
+          ? t("selection.playError", { message: error.message })
+          : t("selection.playErrorFallback"),
         "error",
       );
     }
@@ -1344,7 +1400,10 @@
 
   function updatePlaybackIcon(isPlaying) {
     setIcon(dom.playIcon, isPlaying ? "icon-pause" : "icon-play");
-    dom.playBtn.setAttribute("aria-label", isPlaying ? "暂停" : "播放");
+    dom.playBtn.setAttribute(
+      "aria-label",
+      t(isPlaying ? "transport.pause" : "transport.play"),
+    );
   }
 
   function zoomBy(factor) {
@@ -1569,9 +1628,9 @@
   async function deleteSelection() {
     if (!state.selection || !state.data || state.busy) return;
     const { start, end } = state.selection;
-    showBusy("正在删除片段", "拼接波形并重新计算 RMS，请稍候。");
+    showBusy(t("delete.busyTitle"), t("delete.busyMessage"));
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/audio/${encodeURIComponent(
           state.data.id,
         )}/delete?resolution_ms=${encodeURIComponent(state.resolutionMs)}`,
@@ -1597,10 +1656,10 @@
       state.undoSnapshot = snapshot;
       applyAudioData(data, { reloadMedia: true, preserveCenter: false });
       ensureTimeVisible(state.playhead);
-      toast("片段已删除，可使用“撤销删除”恢复。", "success");
+      toast(t("delete.success"), "success");
     } catch (error) {
       toast(
-        error instanceof Error ? error.message : "删除片段失败，请重试。",
+        error instanceof Error ? error.message : t("delete.failure"),
         "error",
       );
     } finally {
@@ -1611,9 +1670,9 @@
   async function undoDelete() {
     if (!state.data?.previous_available || state.busy) return;
     pausePlayback();
-    showBusy("正在恢复音频", "重新载入上一次删除前的音频。");
+    showBusy(t("undo.busyTitle"), t("undo.busyMessage"));
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/audio/${encodeURIComponent(
           state.data.id,
         )}/undo?resolution_ms=${encodeURIComponent(state.resolutionMs)}`,
@@ -1633,10 +1692,10 @@
       state.selection = null;
       state.playhead = clamp(state.playhead, 0, data.duration);
       applyAudioData(data, { reloadMedia: true, preserveCenter: true });
-      toast("已恢复删除前的音频。", "success");
+      toast(t("undo.success"), "success");
     } catch (error) {
       toast(
-        error instanceof Error ? error.message : "撤销失败，请重试。",
+        error instanceof Error ? error.message : t("undo.failure"),
         "error",
       );
     } finally {
@@ -1647,15 +1706,21 @@
   async function exportAudio() {
     if (!state.data || state.busy) return;
     const format = dom.exportFormat.value || state.data.default_export_format;
-    const scope = state.selection ? "所选片段" : "完整音频";
-    showBusy(`正在导出 ${FORMAT_NAMES[format] || format}`, `编码${scope}，请稍候。`);
+    const formatName = FORMAT_NAMES[format] || format;
+    const scope = t(
+      state.selection ? "export.scopeSelection" : "export.scopeFull",
+    );
+    showBusy(
+      t("export.busyTitle", { format: formatName }),
+      t("export.busyMessage", { scope }),
+    );
     try {
       const params = new URLSearchParams({ format });
       if (state.selection) {
         params.set("start", String(state.selection.start));
         params.set("end", String(state.selection.end));
       }
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/audio/${encodeURIComponent(state.data.id)}/export?${params}`,
       );
       if (!response.ok) throw new Error(await apiError(response));
@@ -1678,10 +1743,10 @@
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast(`${scope}已导出为 ${FORMAT_NAMES[format] || format}。`, "success");
+      toast(t("export.success", { scope, format: formatName }), "success");
     } catch (error) {
       toast(
-        error instanceof Error ? error.message : "导出失败，请重试。",
+        error instanceof Error ? error.message : t("export.failure"),
         "error",
       );
     } finally {
@@ -1692,9 +1757,12 @@
   async function changeResolution() {
     if (!state.data || state.busy) return;
     const resolution = Number(dom.resolutionSelect.value);
-    showBusy("正在重新分析", `以 ${resolution} ms 精度计算 RMS 波形。`);
+    showBusy(
+      t("analysis.busyTitle"),
+      t("analysis.busyMessage", { resolution }),
+    );
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/audio/${encodeURIComponent(
           state.data.id,
         )}/analysis?resolution_ms=${resolution}`,
@@ -1704,11 +1772,11 @@
       state.resolutionMs = resolution;
       state.dismissedAutoKeys.clear();
       applyAudioData(data, { reloadMedia: false, preserveCenter: true });
-      toast(`分析精度已切换为 ${resolution} ms。`);
+      toast(t("analysis.success", { resolution }));
     } catch (error) {
       dom.resolutionSelect.value = String(state.resolutionMs);
       toast(
-        error instanceof Error ? error.message : "重新分析失败。",
+        error instanceof Error ? error.message : t("analysis.failure"),
         "error",
       );
     } finally {
@@ -1721,12 +1789,12 @@
     const baseUrl = dom.asrBaseUrl.value.trim();
     const model = dom.asrModel.value.trim();
     if (!baseUrl) {
-      setAsrStatus("请先填写兼容接口的 Base URL。", "error");
+      setAsrStatus(t("asr.baseRequired"), "error");
       dom.asrBaseUrl.focus();
       return;
     }
     if (!model) {
-      setAsrStatus("请填写 ASR 模型名称。", "error");
+      setAsrStatus(t("asr.modelRequired"), "error");
       dom.asrModel.focus();
       return;
     }
@@ -1741,15 +1809,20 @@
     state.asrBusy = true;
     dom.asrStartBtn.disabled = true;
     dom.asrStartLabel.textContent =
-      mode === "segments" ? `识别 ${chunkCount} 段中…` : "识别中…";
+      mode === "segments"
+        ? t("asr.progressSegments", { count: chunkCount })
+        : t("asr.progressWhole");
     setAsrStatus(
       mode === "segments"
-        ? `正在按 ${chunkSeconds} 秒分段识别，共 ${chunkCount} 段。`
-        : "正在发送整段音频，请等待接口返回。",
+        ? t("asr.statusSegments", {
+            seconds: i18n.formatNumber(chunkSeconds),
+            count: chunkCount,
+          })
+        : t("asr.statusWhole"),
     );
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/audio/${encodeURIComponent(state.data.id)}/transcribe`,
         {
           method: "POST",
@@ -1768,7 +1841,7 @@
       if (!response.ok) throw new Error(await apiError(response));
       const result = await response.json();
       if (state.data.revision !== startRevision) {
-        throw new Error("音频在识别期间发生了变化，结果已舍弃，请重新识别。");
+        throw new Error(t("asr.stale"));
       }
       state.transcripts = result.segments.map((segment, index) => ({
         id: `transcript-${Date.now()}-${state.transcriptSerial + index}`,
@@ -1780,10 +1853,13 @@
       renderTranscripts();
       resizeTimeline(true);
       setAsrStatus(
-        `识别完成：${state.transcripts.length} 段，模型 ${result.model}。`,
+        t("asr.completed", {
+          count: state.transcripts.length,
+          model: result.model,
+        }),
         "success",
       );
-      toast("语音识别完成，文本已对齐到时间轴。", "success");
+      toast(t("asr.success"), "success");
       if (state.transcripts.length) {
         const first = state.transcripts[0];
         setSelection(first.start, first.end);
@@ -1792,17 +1868,17 @@
       }
     } catch (error) {
       setAsrStatus(
-        error instanceof Error ? error.message : "语音识别失败，请检查接口配置。",
+        error instanceof Error ? error.message : t("asr.failure"),
         "error",
       );
       toast(
-        error instanceof Error ? error.message : "语音识别失败。",
+        error instanceof Error ? error.message : t("asr.failure"),
         "error",
       );
     } finally {
       state.asrBusy = false;
       dom.asrStartBtn.disabled = !state.data;
-      dom.asrStartLabel.textContent = "开始识别";
+      dom.asrStartLabel.textContent = t("asr.start");
       updateButtons();
     }
   }
@@ -1810,6 +1886,34 @@
   function setAsrStatus(message, type = "") {
     dom.asrStatus.textContent = message;
     dom.asrStatus.className = `asr-status${type ? ` is-${type}` : ""}`;
+  }
+
+  function refreshLocalizedUi() {
+    updateButtons();
+    if (state.data) {
+      dom.factChannels.textContent =
+        state.data.channels === 1
+          ? t("channels.mono")
+          : t("channels.multiple", { count: state.data.channels });
+      dom.headerFileMeta.textContent = `${(
+        state.data.source_format || ""
+      ).toUpperCase()} · ${t("header.defaultExport", {
+        format: FORMAT_NAMES[state.data.default_export_format] || "WAV",
+      })}`;
+      document.title = `${state.data.name} · WaveCraft`;
+      updatePlaybackIcon(isPlaybackActive());
+      dom.asrKeyToggle.setAttribute(
+        "aria-label",
+        t(dom.asrApiKey.type === "text" ? "apiKey.hide" : "apiKey.show"),
+      );
+      renderLabels();
+      renderTranscripts();
+      updateSelectionUi();
+      updateTimeUi();
+      requestDraw();
+    } else {
+      document.title = t("app.title");
+    }
   }
 
   function openDeleteDialog() {
@@ -1820,7 +1924,7 @@
     if (typeof dom.deleteDialog.showModal === "function") {
       dom.deleteDialog.showModal();
       dom.deleteDialog.querySelector('button[value="cancel"]')?.focus();
-    } else if (window.confirm("确认删除所选音频片段？")) {
+    } else if (window.confirm(t("delete.confirmFallback"))) {
       deleteSelection();
     }
   }
@@ -1988,7 +2092,7 @@
       state.transcripts = [];
       renderTranscripts();
       resizeTimeline(true);
-      toast("识别文本已清除。");
+      toast(t("transcript.cleared"));
     });
 
     dom.asrMode.addEventListener("change", updateAsrModeUi);
@@ -1998,7 +2102,7 @@
       dom.asrKeyToggle.setAttribute("aria-pressed", String(!showing));
       dom.asrKeyToggle.setAttribute(
         "aria-label",
-        showing ? "显示 API Key" : "隐藏 API Key",
+        t(showing ? "apiKey.show" : "apiKey.hide"),
       );
     });
     dom.asrStartBtn.addEventListener("click", runAsr);
@@ -2039,6 +2143,7 @@
     });
   }
 
+  i18n.init(refreshLocalizedUi);
   restoreAsrSettings();
   bindEvents();
   updateButtons();

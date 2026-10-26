@@ -26,6 +26,7 @@ from app import app  # noqa: E402
 
 
 client = TestClient(app)
+BASE_DIR = Path(__file__).resolve().parents[1]
 
 
 def make_wav(duration: float = 1.5, sample_rate: int = 16000) -> bytes:
@@ -96,6 +97,42 @@ def test_upload_analysis_and_default_export() -> None:
     assert response.status_code == 200
     assert response.content.startswith(b"RIFF")
     assert response.headers["x-audio-format"] == "wav"
+
+
+def test_interface_declares_four_languages() -> None:
+    html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
+    assert '<script src="/static/i18n.js"></script>' in html
+    assert 'id="languageSelect"' in html
+    for language in ("zh", "en", "fr", "de"):
+        assert f'<option value="{language}">' in html
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [
+        ("zh-CN", "音频项目不存在"),
+        ("en-US", "Audio project not found"),
+        ("fr-FR", "Projet audio introuvable"),
+        ("de-DE", "Audioprojekt nicht gefunden"),
+    ],
+)
+def test_api_errors_follow_accept_language(language: str, expected: str) -> None:
+    response = client.get(
+        "/api/audio/not-found/media",
+        headers={"Accept-Language": language},
+    )
+    assert response.status_code == 404
+    assert expected in response.json()["detail"]
+
+
+def test_validation_errors_follow_accept_language() -> None:
+    response = client.post(
+        "/api/audio/not-found/delete?resolution_ms=999",
+        headers={"Accept-Language": "de-DE"},
+        json={"start": 0, "end": 1},
+    )
+    assert response.status_code == 422
+    assert "Ungültige Anfrageparameter" in response.json()["detail"]
 
 
 def test_selection_preview_is_exact_and_faded() -> None:

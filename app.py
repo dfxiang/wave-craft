@@ -17,12 +17,14 @@ from uuid import uuid4
 
 import httpx
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from imageio_ffmpeg import get_ffmpeg_exe
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -84,6 +86,233 @@ EXPORT_FORMATS = {
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="声刻 WaveCraft", version="1.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+SUPPORTED_REQUEST_LANGUAGES = {"zh", "en", "fr", "de"}
+SERVER_MESSAGES: dict[str, tuple[str, str, str]] = {
+    "音频项目不存在": (
+        "Audio project not found",
+        "Projet audio introuvable",
+        "Audioprojekt nicht gefunden",
+    ),
+    "音频项目不存在或已被清理": (
+        "Audio project not found or already cleaned up",
+        "Projet audio introuvable ou déjà supprimé",
+        "Audioprojekt nicht gefunden oder bereits bereinigt",
+    ),
+    "音频项目元数据损坏": (
+        "Audio project metadata is damaged",
+        "Les métadonnées du projet audio sont endommagées",
+        "Die Metadaten des Audioprojekts sind beschädigt",
+    ),
+    "无法读取转换后的音频": (
+        "Could not read the converted audio",
+        "Impossible de lire l'audio converti",
+        "Konvertiertes Audio konnte nicht gelesen werden",
+    ),
+    "音频过短，至少需要 80 毫秒": (
+        "Audio is too short; at least 80 ms is required",
+        "L'audio est trop court ; 80 ms minimum sont requis",
+        "Audio ist zu kurz; mindestens 80 ms sind erforderlich",
+    ),
+    "音频转换超时，请尝试更短的文件": (
+        "Audio conversion timed out. Try a shorter file",
+        "La conversion audio a expiré. Essayez un fichier plus court",
+        "Zeitüberschreitung bei der Audiokonvertierung. Versuche eine kürzere Datei",
+    ),
+    "ASR Base URL 必须以 http:// 或 https:// 开头": (
+        "The ASR Base URL must start with http:// or https://",
+        "L'URL de base ASR doit commencer par http:// ou https://",
+        "Die ASR-Basis-URL muss mit http:// oder https:// beginnen",
+    ),
+    "ASR 服务响应超时": (
+        "The ASR service timed out",
+        "Le service ASR a expiré",
+        "Zeitüberschreitung beim ASR-Dienst",
+    ),
+    "上传的音频文件为空": (
+        "The uploaded audio file is empty",
+        "Le fichier audio envoyé est vide",
+        "Die hochgeladene Audiodatei ist leer",
+    ),
+    "导出起点超出音频范围": (
+        "The export start is outside the audio range",
+        "Le début de l'export se trouve hors de la plage audio",
+        "Der Exportstart liegt außerhalb des Audiobreichs",
+    ),
+    "导出片段至少需要 80 毫秒": (
+        "An exported clip must be at least 80 ms long",
+        "Un extrait exporté doit durer au moins 80 ms",
+        "Ein exportierter Ausschnitt muss mindestens 80 ms lang sein",
+    ),
+    "选区起点超出音频范围": (
+        "The selection start is outside the audio range",
+        "Le début de la sélection se trouve hors de la plage audio",
+        "Der Auswahlstart liegt außerhalb des Audiobreichs",
+    ),
+    "选区至少需要 80 毫秒": (
+        "The selection must be at least 80 ms long",
+        "La sélection doit durer au moins 80 ms",
+        "Die Auswahl muss mindestens 80 ms lang sein",
+    ),
+    "删除片段至少需要 80 毫秒": (
+        "The clip to delete must be at least 80 ms long",
+        "L'extrait à supprimer doit durer au moins 80 ms",
+        "Der zu löschende Ausschnitt muss mindestens 80 ms lang sein",
+    ),
+    "不能删除整段音频": (
+        "The complete audio cannot be deleted",
+        "L'intégralité de l'audio ne peut pas être supprimée",
+        "Das vollständige Audio kann nicht gelöscht werden",
+    ),
+    "删除后音频过短": (
+        "The audio would be too short after deletion",
+        "L'audio serait trop court après la suppression",
+        "Das Audio wäre nach dem Löschen zu kurz",
+    ),
+    "没有可撤销的删除操作": (
+        "There is no deletion to undo",
+        "Aucune suppression à annuler",
+        "Es gibt keine Löschung zum Rückgängigmachen",
+    ),
+    "分段数量超过 200，请增大每段时长后再试": (
+        "More than 200 segments are required. Increase the segment duration and try again",
+        "Plus de 200 segments sont nécessaires. Augmentez la durée des segments et réessayez",
+        "Es wären mehr als 200 Segmente erforderlich. Erhöhe die Segmentdauer und versuche es erneut",
+    ),
+}
+SERVER_ERROR_PATTERNS: list[tuple[re.Pattern[str], tuple[str, str, str]]] = [
+    (
+        re.compile(r"^不支持该文件格式，请上传：(.+)$"),
+        (
+            "Unsupported file format. Upload one of: {value}",
+            "Format de fichier non pris en charge. Envoyez l'un des formats suivants : {value}",
+            "Nicht unterstütztes Dateiformat. Lade eines der folgenden Formate hoch: {value}",
+        ),
+    ),
+    (
+        re.compile(r"^音频解码失败：(.+)$"),
+        (
+            "Audio decoding failed: {value}",
+            "Échec du décodage audio : {value}",
+            "Audiodekodierung fehlgeschlagen: {value}",
+        ),
+    ),
+    (
+        re.compile(r"^无法连接 ASR 服务：(.+)$"),
+        (
+            "Could not connect to the ASR service: {value}",
+            "Impossible de se connecter au service ASR : {value}",
+            "Verbindung zum ASR-Dienst nicht möglich: {value}",
+        ),
+    ),
+    (
+        re.compile(r"^ASR 服务返回 (\d+)：(.+)$"),
+        (
+            "The ASR service returned {status}: {value}",
+            "Le service ASR a renvoyé {status} : {value}",
+            "Der ASR-Dienst hat {status} zurückgegeben: {value}",
+        ),
+    ),
+    (
+        re.compile(r"^文件超过 (\d+) MB 限制$"),
+        (
+            "The file exceeds the {value} MB limit",
+            "Le fichier dépasse la limite de {value} Mo",
+            "Die Datei überschreitet das Limit von {value} MB",
+        ),
+    ),
+    (
+        re.compile(r"^处理音频时出错：(.+)$"),
+        (
+            "An error occurred while processing the audio: {value}",
+            "Une erreur est survenue lors du traitement de l'audio : {value}",
+            "Bei der Audioverarbeitung ist ein Fehler aufgetreten: {value}",
+        ),
+    ),
+    (
+        re.compile(r"^不支持导出为 (.+)，可选：(.+)$"),
+        (
+            "Exporting as {value} is not supported. Available formats: {options}",
+            "L'export en {value} n'est pas pris en charge. Formats disponibles : {options}",
+            "Der Export als {value} wird nicht unterstützt. Verfügbare Formate: {options}",
+        ),
+    ),
+    (
+        re.compile(r"^导出为 (.+) 失败：(.+)$"),
+        (
+            "Exporting as {value} failed: {error}",
+            "L'export en {value} a échoué : {error}",
+            "Der Export als {value} ist fehlgeschlagen: {error}",
+        ),
+    ),
+]
+VALIDATION_ERROR_MESSAGES = {
+    "zh": "请求参数无效，请检查输入内容和数值范围。",
+    "en": "Invalid request parameters. Check the submitted values and ranges.",
+    "fr": "Paramètres de requête non valides. Vérifiez les valeurs et les plages saisies.",
+    "de": "Ungültige Anfrageparameter. Prüfe die eingegebenen Werte und Bereiche.",
+}
+
+
+def request_language(request: Request) -> str:
+    for item in request.headers.get("accept-language", "").split(","):
+        language = item.split(";", 1)[0].strip().lower().split("-", 1)[0]
+        if language in SUPPORTED_REQUEST_LANGUAGES:
+            return language
+    return "zh"
+
+
+def translated_server_message(message: str, language: str) -> str:
+    if language == "zh":
+        return message
+    index = {"en": 0, "fr": 1, "de": 2}[language]
+    if message in SERVER_MESSAGES:
+        return SERVER_MESSAGES[message][index]
+    for pattern, translations in SERVER_ERROR_PATTERNS:
+        match = pattern.match(message)
+        if not match:
+            continue
+        groups = match.groups()
+        template = translations[index]
+        values: dict[str, str] = {}
+        if groups:
+            values["value"] = groups[0]
+        if "{status}" in template:
+            values["status"] = groups[0]
+            values["value"] = groups[1]
+        elif "{options}" in template:
+            values["options"] = groups[1]
+        elif "{error}" in template:
+            values["error"] = groups[1]
+        return template.format(**values)
+    return message
+
+
+@app.exception_handler(StarletteHTTPException)
+async def localized_http_exception(
+    request: Request,
+    exception: StarletteHTTPException,
+) -> JSONResponse:
+    detail = exception.detail
+    if isinstance(detail, str):
+        detail = translated_server_message(detail, request_language(request))
+    return JSONResponse(
+        status_code=exception.status_code,
+        content={"detail": detail},
+        headers=exception.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def localized_validation_exception(
+    request: Request,
+    exception: RequestValidationError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={"detail": VALIDATION_ERROR_MESSAGES[request_language(request)]},
+    )
+
 
 _project_locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
