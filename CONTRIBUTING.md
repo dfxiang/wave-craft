@@ -1,5 +1,7 @@
 # 贡献指南
 
+简体中文 | [English](CONTRIBUTING.en.md)
+
 感谢你愿意为 WaveCraft 出力。提交代码前，请先搜索现有 Issue，并确保改动范围清晰、
 可以复现和验证。
 

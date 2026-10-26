@@ -1,5 +1,7 @@
 # 声刻 WaveCraft
 
+简体中文 | [English](README.en.md)
+
 基于 FastAPI + 原生 HTML/CSS/JavaScript 的浏览器音频编辑工具。上传音频后会由服务端
 解码为 PCM、计算 RMS 波形，并在浏览器中提供可横向滚动的时间线，适合播客剪辑、录音
 整理、静音段排查和语音转写等场景。
@@ -44,10 +46,11 @@ wave-craft/
 ├── tests/                  # 接口与音频处理测试
 ├── Dockerfile              # 非 root 用户运行的应用镜像
 ├── docker-compose.yml      # 单命令启动与持久化数据卷
-├── CONTRIBUTING.md         # 开发、测试和提交约定
-├── SECURITY.md             # 漏洞报告与自托管安全须知
+├── README.md / README.en.md                    # 中英文项目说明
+├── CONTRIBUTING.md / CONTRIBUTING.en.md        # 中英文贡献指南
+├── SECURITY.md / SECURITY.en.md                # 中英文安全策略
 ├── LICENSE                 # Apache-2.0 + Commons Clause
-└── docs/                   # 许可与商用说明
+└── docs/                   # 中英文许可与商用说明
 ```
 
 ## Docker 启动
@@ -117,7 +120,7 @@ Authorization: Bearer {api_key}
 
 如果 Base URL 没有 `/v1`，服务会自动追加 `/v1/audio/transcriptions`；如果填写的本身就是以 `/audio/transcriptions` 结尾的完整地址，则原样使用。
 
-## 时区与限制
+## 运行限制
 
 - 单文件上传默认上限 250 MB，可由 `AUDIO_EDITOR_MAX_UPLOAD_MB` 调整。
 - FFmpeg 由 `imageio-ffmpeg` 随 Python 依赖安装，不依赖宿主机单独安装 FFmpeg。

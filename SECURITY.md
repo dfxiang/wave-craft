@@ -1,5 +1,7 @@
 # 安全策略
 
+简体中文 | [English](SECURITY.en.md)
+
 ## 报告漏洞
 
 请不要用公开 Issue 报告安全问题。优先使用 GitHub 的私密漏洞报告
