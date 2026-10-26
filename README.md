@@ -4,6 +4,12 @@
 解码为 PCM、计算 RMS 波形，并在浏览器中提供可横向滚动的时间线，适合播客剪辑、录音
 整理、静音段排查和语音转写等场景。
 
+## 界面
+
+![WaveCraft 项目界面一](wavecraft1.png)
+
+![WaveCraft 项目界面二](wavecraft2.png)
+
 [![License](https://img.shields.io/badge/License-Apache--2.0%20%2B%20Commons%20Clause-3b6ea5.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
