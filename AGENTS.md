@@ -11,3 +11,10 @@
   ```bash
   GIT_SSH_COMMAND='ssh -o KexAlgorithms=curve25519-sha256' git push github main
   ```
+
+- 如果标准 SSH 仍超时，改用 GitHub 的 443 端口端点：
+
+  ```bash
+  GIT_SSH_COMMAND='ssh -o KexAlgorithms=curve25519-sha256' \
+    git push ssh://git@ssh.github.com:443/dfxiang/wave-craft.git main
+  ```
